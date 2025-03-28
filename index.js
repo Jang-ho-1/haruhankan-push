@@ -1,43 +1,50 @@
 const express = require("express");
 const admin = require("firebase-admin");
+const cors = require("cors");
+
 const app = express();
-const port = process.env.PORT || 3000;
-
 app.use(express.json());
+app.use(cors());
 
-// Render 환경에서 FIREBASE_ADMIN_KEY는 환경변수로 들어가 있어야 함
+// Firebase Admin 키를 환경변수에서 불러오기
 const serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_KEY);
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert(serviceAccount)
 });
 
-// 이 경로로 POST 요청하면 알림 발송됨
-app.post("/send", async (req, res) => {
-  const { token, title, body } = req.body;
+const db = admin.firestore();
 
-  const message = {
-    token,
-    notification: {
-      title,
-      body,
-    },
-  };
+// 공지사항 등록 요청을 받으면 FCM 알림 전송
+app.post("/send-notice", async (req, res) => {
+  const { groupId, title, body } = req.body;
 
   try {
-    const response = await admin.messaging().send(message);
-    res.status(200).send(`Successfully sent message: ${response}`);
+    const groupDoc = await db.collection("groups").doc(groupId).get();
+    const members = groupDoc.data().members || [];
+
+    const tokens = [];
+    for (const uid of members) {
+      const userDoc = await db.collection("users").doc(uid).get();
+      const token = userDoc.data().fcmToken;
+      if (token) tokens.push(token);
+    }
+
+    const message = {
+      notification: { title, body },
+      tokens
+    };
+
+    const response = await admin.messaging().sendMulticast(message);
+    console.log("✅ 알림 전송 완료:", response.successCount);
+    res.status(200).send("알림 전송 성공");
   } catch (error) {
-    console.error("Error sending message:", error);
-    res.status(500).send("Failed to send message");
+    console.error("❌ 알림 전송 실패:", error);
+    res.status(500).send("알림 전송 실패");
   }
 });
 
-// 테스트용 GET
-app.get("/", (req, res) => {
-  res.send("Haruhankan Push Server is running!");
-});
-
+const port = process.env.PORT || 10000;
 app.listen(port, () => {
-  console.log(`Server is listening on port ${port}`);
+  console.log(`서버 실행 중: http://localhost:${port}`);
 });
