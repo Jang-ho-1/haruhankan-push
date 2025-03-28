@@ -16,7 +16,7 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // 공지사항 등록 요청을 받으면 FCM 알림 전송
-app.post("/send-notice", async (req, res) => {
+app.post("/notify", async (req, res) => {
   const { groupId, title, body } = req.body;
 
   try {
